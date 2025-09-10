@@ -13,7 +13,15 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
-
+// Test route to check environment variables
+app.get('/api/test-env', (req, res) => {
+  res.json({
+    hasSupabaseUrl: !!process.env.SUPABASE_URL,
+    hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY,
+    urlLength: process.env.SUPABASE_URL ? process.env.SUPABASE_URL.length : 0,
+    keyLength: process.env.SUPABASE_ANON_KEY ? process.env.SUPABASE_ANON_KEY.length : 0
+  });
+});
 // Enable CORS for all routes
 app.use(cors());
 app.use(express.json());
