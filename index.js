@@ -8,11 +8,22 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 const port = 3001;
 
+// CORS configuration - MUST be before any routes
 app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: [
+    'https://cdn.botpress.cloud',
+    'https://files.bpcontent.cloud',
+    'https://studio.botpress.cloud',
+    'http://localhost:3000',
+    '*'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
+// Also add this to handle preflight requests
+app.options('*', cors());
 
 // Initialize Supabase client
 const supabase = createClient(
