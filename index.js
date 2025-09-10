@@ -22,6 +22,34 @@ app.get('/api/test-env', (req, res) => {
     keyLength: process.env.SUPABASE_ANON_KEY ? process.env.SUPABASE_ANON_KEY.length : 0
   });
 });
+// Test database connection
+app.get('/api/test-db', async (req, res) => {
+  try {
+    // Try to get count of customers
+    const { count, error } = await supabase
+      .from('customers')
+      .select('*', { count: 'exact', head: true });
+    
+    if (error) {
+      res.json({ 
+        success: false, 
+        error: error.message,
+        details: error 
+      });
+    } else {
+      res.json({ 
+        success: true, 
+        customerCount: count,
+        message: 'Database connected successfully'
+      });
+    }
+  } catch (err) {
+    res.json({ 
+      success: false, 
+      error: err.message 
+    });
+  }
+});
 // Enable CORS for all routes
 app.use(cors());
 app.use(express.json());
