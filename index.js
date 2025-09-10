@@ -8,6 +8,12 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 const port = 3001;
 
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 // Initialize Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
