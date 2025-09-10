@@ -170,11 +170,18 @@ app.get('/api/customers/:customerId', async (req, res) => {
   try {
     const { customerId } = req.params;
     
+    // Add these debug logs
+    console.log('Received request for customer:', customerId);
+    console.log('Request headers:', req.headers);
+    
     const { data, error } = await supabase
       .from('customers')
       .select('*')
       .eq('customer_id', customerId)
       .single();
+
+       // Add this log
+    console.log('Supabase response:', { data, error });
 
     if (error || !data) {
       return res.status(404).json({ 
