@@ -1,14 +1,21 @@
 const { createClient } = require('@supabase/supabase-js');
 
 module.exports = async (req, res) => {
-  // Enable CORS
+  // Set CORS headers for ALL responses
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   
+  // Handle preflight OPTIONS request
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+
+  // Log the request for debugging
+  console.log('Request method:', req.method);
+  console.log('Request query:', req.query);
+  console.log('Request headers:', req.headers);
 
   // Initialize Supabase
   const supabase = createClient(
@@ -34,7 +41,8 @@ module.exports = async (req, res) => {
       .single();
 
     if (error || !data) {
-      return res.status(404).json({ 
+      // Don't return 404, return 200 with success: false
+      return res.status(200).json({ 
         success: false, 
         message: 'Customer not found',
         error: error?.message 
@@ -46,7 +54,8 @@ module.exports = async (req, res) => {
       customer: data
     });
   } catch (error) {
-    return res.status(500).json({ 
+    // Don't return 500, return 200 with success: false
+    return res.status(200).json({ 
       success: false, 
       message: 'Server error',
       error: error.message 
