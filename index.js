@@ -14,10 +14,40 @@ const supabase = createClient(
 const server = http.createServer(async (req, res) => {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Content-Type', 'application/json');
 
   // Parse URL
   const url = new URL(req.url, `http://${req.headers.host}`);
+  
+  // Serve the bot host page
+  if (url.pathname === '/bot-host') {
+    const customerId = url.searchParams.get('customerId') || 'DEFAULT';
+    
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Remodeling Bot</title>
+    <style>
+        body { margin: 0; padding: 0; }
+    </style>
+</head>
+<body>
+    <script>
+        window.CUSTOMER_ID = '${customerId}';
+        console.log('Bot initialized for customer:', '${customerId}');
+    </script>
+    <script src="https://cdn.botpress.cloud/webchat/v3.2/inject.js"></script>
+    <script src="https://files.bpcontent.cloud/2025/09/05/19/20250905193502-3X1VD4LZ.js" defer></script>
+</body>
+</html>`;
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.writeHead(200);
+    res.end(html);
+    return;
+  }
+  
+  // Set JSON content type for API routes
+  res.setHeader('Content-Type', 'application/json');
   
   // Handle /api/customers route
   if (url.pathname === '/api/customers') {
