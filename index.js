@@ -25,11 +25,15 @@ app.use(cors({
 // Also add this to handle preflight requests
 app.options('*', cors());
 
+// Parse JSON bodies
+app.use(express.json());
+
 // Initialize Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
+
 // Test route to check environment variables
 app.get('/api/test-env', (req, res) => {
   res.json({
@@ -39,6 +43,7 @@ app.get('/api/test-env', (req, res) => {
     keyLength: process.env.SUPABASE_ANON_KEY ? process.env.SUPABASE_ANON_KEY.length : 0
   });
 });
+
 // Test database connection
 app.get('/api/test-db', async (req, res) => {
   try {
@@ -67,9 +72,6 @@ app.get('/api/test-db', async (req, res) => {
     });
   }
 });
-// Enable CORS for all routes
-app.use(cors());
-app.use(express.json());
 
 // Basic test route
 app.get('/', (req, res) => {
@@ -109,23 +111,23 @@ app.post('/api/customers', async (req, res) => {
 
     console.log('Customer saved to database:', data[0]);
     
-// Generate customer setup instructions and embed code
-const setupInstructions = {
-  customerId: customerId,
-  companyName: companyName,
-  serviceAreas: serviceAreas,
-  configurationSteps: [
-    `1. Go to your Botpress Studio → Bot Settings → Configuration Variables`,
-    `2. Add/Update these variables:`,
-    `   - CUSTOMER_ID: ${customerId}`,
-    `   - COMPANY_NAME: ${companyName}`,
-    `   - SERVICE_AREAS: ${serviceAreas}`,
-    `   - MINIMUM_BUDGET: 75000`,
-    `   - TIMELINE_THRESHOLD: 12`,
-    `3. Save and Publish your bot`,
-    `4. Copy the embed code below to your website`
-  ],
-embedCode: `<script>
+    // Generate customer setup instructions and embed code
+    const setupInstructions = {
+      customerId: customerId,
+      companyName: companyName,
+      serviceAreas: serviceAreas,
+      configurationSteps: [
+        `1. Go to your Botpress Studio → Bot Settings → Configuration Variables`,
+        `2. Add/Update these variables:`,
+        `   - CUSTOMER_ID: ${customerId}`,
+        `   - COMPANY_NAME: ${companyName}`,
+        `   - SERVICE_AREAS: ${serviceAreas}`,
+        `   - MINIMUM_BUDGET: 75000`,
+        `   - TIMELINE_THRESHOLD: 12`,
+        `3. Save and Publish your bot`,
+        `4. Copy the embed code below to your website`
+      ],
+      embedCode: `<script>
   window.botpressWebchatConfig = {
     botId: "192fdc5c-232a-4f2a-980c-f77186607bdc",
     hostUrl: "https://cdn.botpress.cloud/webchat/v2.2/",
@@ -144,11 +146,11 @@ embedCode: `<script>
   };
 </script>
 <script src="https://cdn.botpress.cloud/webchat/v2.2/inject.js"></script>`,
-  welcomeMessage: `Welcome ${companyName}! Your bot is ready to capture qualified remodeling leads.`
-};
+      welcomeMessage: `Welcome ${companyName}! Your bot is ready to capture qualified remodeling leads.`
+    };
 
-console.log('Setup instructions generated for:', customerId);
-console.log(JSON.stringify(setupInstructions, null, 2));
+    console.log('Setup instructions generated for:', customerId);
+    console.log(JSON.stringify(setupInstructions, null, 2));
     
     res.json({
       success: true,
@@ -180,7 +182,7 @@ app.get('/api/customers/:customerId', async (req, res) => {
       .eq('customer_id', customerId)
       .single();
 
-       // Add this log
+    // Add this log
     console.log('Supabase response:', { data, error });
 
     if (error || !data) {
@@ -204,7 +206,12 @@ app.get('/api/customers/:customerId', async (req, res) => {
   }
 });
 
-// Start server
-app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
-});
+// Only listen if not in production (Vercel)
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
+  });
+}
+
+// Export for Vercel
+module.exports = app;
