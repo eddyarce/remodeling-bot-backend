@@ -168,24 +168,22 @@ app.post('/api/customers', async (req, res) => {
 });
 
 // Get customer details by ID endpoint
-app.get('/api/customers/*', async (req, res) => {
+app.get('/api/customers', async (req, res) => {
+  const customerId = req.query.customerId;
+  
+  if (!customerId) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Customer ID required' 
+    });
+  }
+
   try {
-    // Extract customerId from the URL path
-    const pathParts = req.path.split('/');
-    const customerId = pathParts[pathParts.length - 1];
-    
-    // Add these debug logs
-    console.log('Received request for customer:', customerId);
-    console.log('Request headers:', req.headers);
-    
     const { data, error } = await supabase
       .from('customers')
       .select('*')
       .eq('customer_id', customerId)
       .single();
-
-    // Add this log
-    console.log('Supabase response:', { data, error });
 
     if (error || !data) {
       return res.status(404).json({ 
@@ -193,6 +191,18 @@ app.get('/api/customers/*', async (req, res) => {
         message: 'Customer not found' 
       });
     }
+
+    res.json({
+      success: true,
+      customer: data
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error' 
+    });
+  }
+});
 
     res.json({
       success: true,
