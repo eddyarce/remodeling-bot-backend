@@ -49,6 +49,21 @@ const server = http.createServer(async (req, res) => {
   // Set JSON content type for API routes
   res.setHeader('Content-Type', 'application/json');
   
+  // Webhook to store customer-conversation mapping
+  if (url.pathname.startsWith('/webhook/')) {
+    const customerId = url.pathname.split('/webhook/')[1];
+    const body = [];
+    req.on('data', chunk => body.push(chunk));
+    req.on('end', () => {
+      const data = JSON.parse(Buffer.concat(body).toString());
+      console.log(`Webhook: Conversation ${data.conversationId} belongs to ${customerId}`);
+      // In production, store this mapping in database
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true }));
+    });
+    return;
+  }
+  
   // Handle /api/customers route
   if (url.pathname === '/api/customers') {
     const customerId = url.searchParams.get('customerId');
