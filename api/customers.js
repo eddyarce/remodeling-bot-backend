@@ -1,28 +1,28 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
-
 module.exports = async (req, res) => {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    return res.status(200).end();
   }
 
-  // Extract customer ID from URL
-  const url = req.url;
-  const customerId = url.split('/').pop();
+  // Initialize Supabase
+  const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_ANON_KEY
+  );
 
-  if (!customerId || customerId === 'customers') {
+  // Extract customer ID from query string
+  const { customerId } = req.query;
+  
+  if (!customerId) {
     return res.status(400).json({ 
       success: false, 
-      message: 'Customer ID required' 
+      message: 'Customer ID required. Use ?customerId=CUSTOMER_XXX' 
     });
   }
 
@@ -36,18 +36,20 @@ module.exports = async (req, res) => {
     if (error || !data) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Customer not found' 
+        message: 'Customer not found',
+        error: error?.message 
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       customer: data
     });
   } catch (error) {
-    res.status(500).json({ 
+    return res.status(500).json({ 
       success: false, 
-      message: 'Server error' 
+      message: 'Server error',
+      error: error.message 
     });
   }
 };
