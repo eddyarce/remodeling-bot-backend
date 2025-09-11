@@ -168,9 +168,11 @@ app.post('/api/customers', async (req, res) => {
 });
 
 // Get customer details by ID endpoint
-app.get('/api/customers/:customerId', async (req, res) => {
+app.get('/api/customers/*', async (req, res) => {
   try {
-    const { customerId } = req.params;
+    // Extract customerId from the URL path
+    const pathParts = req.path.split('/');
+    const customerId = pathParts[pathParts.length - 1];
     
     // Add these debug logs
     console.log('Received request for customer:', customerId);
