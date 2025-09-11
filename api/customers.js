@@ -1,25 +1,45 @@
-module.exports = async (req, res) => {
-  // Skip all security - just return the data
-  const { createClient } = require('@supabase/supabase-js');
-  
+const { createClient } = require('@supabase/supabase-js');
+
+module.exports = (req, res) => {
+  // Initialize Supabase
   const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_ANON_KEY
   );
 
-  // Get customerId from query
-  const customerId = req.query.customerId || 'CUSTOMER_1757486321128';
+  // Parse the query parameter
+  const customerId = req.query.customerId;
+  
+  if (!customerId) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Customer ID required' 
+    });
+  }
 
-  const { data, error } = await supabase
+  // Get customer from database
+  supabase
     .from('customers')
     .select('*')
     .eq('customer_id', customerId)
-    .single();
-
-  // Always return 200 with data
-  res.status(200).json({
-    success: !error,
-    customer: data,
-    error: error?.message
-  });
+    .single()
+    .then(({ data, error }) => {
+      if (error || !data) {
+        return res.status(200).json({ 
+          success: false, 
+          message: 'Customer not found' 
+        });
+      }
+      
+      res.status(200).json({
+        success: true,
+        customer: data
+      });
+    })
+    .catch(err => {
+      res.status(500).json({ 
+        success: false, 
+        message: 'Server error' 
+      });
+    });
 };
