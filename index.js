@@ -14,99 +14,124 @@ const supabase = createClient(
 const server = http.createServer(async (req, res) => {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Content-Type', 'application/json');
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
 
   // Parse URL
   const url = new URL(req.url, `http://${req.headers.host}`);
   
-  // Serve the bot host page
-  if (url.pathname === '/bot-host') {
-    const customerId = url.searchParams.get('customerId') || 'DEFAULT';
-    
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-    <title>Remodeling Bot</title>
-    <style>
-        body { margin: 0; padding: 0; }
-    </style>
-</head>
-<body>
-    <script>
-        window.CUSTOMER_ID = '${customerId}';
-        console.log('Bot initialized for customer:', '${customerId}');
-    </script>
-    <script src="https://cdn.botpress.cloud/webchat/v3.2/inject.js"></script>
-    <script src="https://files.bpcontent.cloud/2025/09/05/19/20250905193502-3X1VD4LZ.js" defer></script>
-</body>
-</html>`;
-    
-    res.setHeader('Content-Type', 'text/html');
-    res.writeHead(200);
-    res.end(html);
-    return;
-  }
-  
-  // Set JSON content type for API routes
-  res.setHeader('Content-Type', 'application/json');
-  
-  // Webhook to store customer-conversation mapping
-  if (url.pathname.startsWith('/webhook/')) {
-    const customerId = url.pathname.split('/webhook/')[1];
-    const body = [];
-    req.on('data', chunk => body.push(chunk));
-    req.on('end', () => {
-      const data = JSON.parse(Buffer.concat(body).toString());
-      console.log(`Webhook: Conversation ${data.conversationId} belongs to ${customerId}`);
-      // In production, store this mapping in database
-      res.writeHead(200);
-      res.end(JSON.stringify({ success: true }));
-    });
-    return;
-  }
-  
   // Handle /api/customers route
   if (url.pathname === '/api/customers') {
-    const customerId = url.searchParams.get('customerId');
     
-    console.log('Received request for customer:', customerId);
-    
-    if (!customerId) {
-      res.writeHead(400);
-      res.end(JSON.stringify({ success: false, message: 'Customer ID required' }));
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('customer_id', customerId)
-        .single();
-
-      console.log('Supabase query result:', { data, error });
-
-      if (error || !data) {
-        res.writeHead(200);
-        res.end(JSON.stringify({ 
-          success: false, 
-          message: 'Customer not found',
-          error: error?.message,
-          customerId: customerId
-        }));
+    // GET - Fetch customer data
+    if (req.method === 'GET') {
+      const customerId = url.searchParams.get('customerId');
+      
+      console.log('Received request for customer:', customerId);
+      
+      if (!customerId) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ success: false, message: 'Customer ID required' }));
         return;
       }
 
-      res.writeHead(200);
-      res.end(JSON.stringify({ success: true, customer: data }));
-    } catch (err) {
-      console.error('Error:', err);
-      res.writeHead(500);
-      res.end(JSON.stringify({ success: false, message: 'Server error', error: err.message }));
+      try {
+        const { data, error } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('customer_id', customerId)
+          .single();
+
+        console.log('Supabase query result:', { data, error });
+
+        if (error || !data) {
+          res.writeHead(200);
+          res.end(JSON.stringify({ 
+            success: false, 
+            message: 'Customer not found',
+            error: error?.message,
+            customerId: customerId
+          }));
+          return;
+        }
+
+        res.writeHead(200);
+        res.end(JSON.stringify({ success: true, customer: data }));
+      } catch (err) {
+        console.error('Error:', err);
+        res.writeHead(500);
+        res.end(JSON.stringify({ success: false, message: 'Server error', error: err.message }));
+      }
     }
+    
+    // POST - Create new customer
+    else if (req.method === 'POST') {
+      let body = '';
+      
+      // Collect the request body
+      req.on('data', chunk => {
+        body += chunk.toString();
+      });
+      
+      req.on('end', async () => {
+        try {
+          const customerData = JSON.parse(body);
+          
+          console.log('Creating new customer:', customerData.customer_id);
+          
+          // Validate required fields
+          const required = ['customer_id', 'company_name', 'contact_email', 'service_areas', 'minimum_budget', 'timeline_threshold'];
+          for (const field of required) {
+            if (!customerData[field]) {
+              res.writeHead(400);
+              res.end(JSON.stringify({ success: false, message: `${field} is required` }));
+              return;
+            }
+          }
+          
+          // Insert into Supabase
+          const { data, error } = await supabase
+            .from('customers')
+            .insert([customerData])
+            .select()
+            .single();
+          
+          if (error) {
+            console.error('Supabase insert error:', error);
+            res.writeHead(400);
+            res.end(JSON.stringify({ success: false, message: 'Failed to create customer', error: error.message }));
+            return;
+          }
+          
+          console.log('Customer created successfully:', data.customer_id);
+          res.writeHead(201);
+          res.end(JSON.stringify({ success: true, customer: data }));
+          
+        } catch (err) {
+          console.error('Error parsing request:', err);
+          res.writeHead(400);
+          res.end(JSON.stringify({ success: false, message: 'Invalid request', error: err.message }));
+        }
+      });
+    }
+    
+    else {
+      res.writeHead(405);
+      res.end(JSON.stringify({ success: false, message: 'Method not allowed' }));
+    }
+    
   } else {
     // Default response
     res.writeHead(200);
-    res.end(JSON.stringify({ message: 'API is running' }));
+    res.end(JSON.stringify({ message: 'LeadSavr API is running' }));
   }
 });
 
