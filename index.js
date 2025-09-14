@@ -124,7 +124,7 @@ const server = http.createServer(async (req, res) => {
       });
     }
     
-   else {
+    else {
       res.writeHead(405);
       res.end(JSON.stringify({ success: false, message: 'Method not allowed' }));
     }
@@ -172,8 +172,7 @@ const server = http.createServer(async (req, res) => {
       }
     });
   }
-
-  } else {
+  else {
     // Default response
     res.writeHead(200);
     res.end(JSON.stringify({ message: 'LeadSavr API is running' }));
