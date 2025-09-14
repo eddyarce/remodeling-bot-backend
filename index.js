@@ -186,7 +186,7 @@ const server = http.createServer(async (req, res) => {
     try {
       // For now, use a simple token check - in production, use proper JWT validation
       const { data: leads, error } = await supabase
-        .from('leads')
+        .from('conversations')
         .select('*')
         .order('created_at', { ascending: false });
       
@@ -217,7 +217,7 @@ const server = http.createServer(async (req, res) => {
     
     try {
       const { data: leads } = await supabase
-        .from('leads')
+        .from('conversations')
         .select('is_qualified, created_at, budget');
       
       const analytics = {
@@ -261,7 +261,7 @@ const server = http.createServer(async (req, res) => {
         };
         
         const { data, error } = await supabase
-          .from('leads')
+          .from('conversations')
           .update(updateData)
           .eq('conversation_id', conversationId)
           .select()
