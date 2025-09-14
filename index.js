@@ -124,12 +124,12 @@ const server = http.createServer(async (req, res) => {
       });
     }
     
-    else {
+   else {
       res.writeHead(405);
       res.end(JSON.stringify({ success: false, message: 'Method not allowed' }));
     }
-    
-    // Handle /api/leads/notify-qualified route
+  }
+  // Handle /api/leads/notify-qualified route
   else if (url.pathname === '/api/leads/notify-qualified' && req.method === 'POST') {
     let body = '';
     
@@ -172,7 +172,7 @@ const server = http.createServer(async (req, res) => {
       }
     });
   }
-  
+
   } else {
     // Default response
     res.writeHead(200);
