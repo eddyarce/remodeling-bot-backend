@@ -1,6 +1,6 @@
 const http = require('http');
 const { createClient } = require('@supabase/supabase-js');
-const { sendQualifiedLeadEmail } = require('./services/emailService');
+const { sendQualifiedLeadEmail } = require('./services/emailService.js');
 
 // Log environment variables (without exposing the full key)
 console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
