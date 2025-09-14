@@ -1,4 +1,5 @@
 const http = require('http');
+require('dotenv').config(); // Load environment variables
 const { createClient } = require('@supabase/supabase-js');
 const { sendQualifiedLeadEmail } = require('./services/emailService.js');
 
@@ -171,6 +172,68 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ success: false, message: 'Failed to send notification', error: err.message }));
       }
     });
+  }
+  // Handle /api/dashboard/leads route
+  else if (url.pathname === '/api/dashboard/leads' && req.method === 'GET') {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+      return;
+    }
+    
+    try {
+      // For now, use a simple token check - in production, use proper JWT validation
+      const { data: leads, error } = await supabase
+        .from('leads')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching leads:', error);
+        res.writeHead(500);
+        res.end(JSON.stringify({ success: false, message: 'Failed to fetch leads' }));
+        return;
+      }
+      
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true, leads: leads || [] }));
+    } catch (err) {
+      console.error('Error:', err);
+      res.writeHead(500);
+      res.end(JSON.stringify({ success: false, message: 'Server error' }));
+    }
+  }
+  // Handle /api/dashboard/analytics route
+  else if (url.pathname === '/api/dashboard/analytics' && req.method === 'GET') {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
+      return;
+    }
+    
+    try {
+      const { data: leads } = await supabase
+        .from('leads')
+        .select('is_qualified, created_at, budget');
+      
+      const analytics = {
+        totalLeads: leads?.length || 0,
+        qualifiedLeads: leads?.filter(l => l.is_qualified).length || 0,
+        conversionRate: leads?.length ? ((leads.filter(l => l.is_qualified).length / leads.length) * 100).toFixed(1) : 0,
+        avgBudget: leads?.length ? Math.round(leads.reduce((sum, l) => sum + (l.budget || 0), 0) / leads.length) : 0
+      };
+      
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true, ...analytics }));
+    } catch (err) {
+      console.error('Error:', err);
+      res.writeHead(500);
+      res.end(JSON.stringify({ success: false, message: 'Server error' }));
+    }
   }
   // Handle /api/leads/update-status route
   else if (url.pathname === '/api/leads/update-status' && req.method === 'POST') {
