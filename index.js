@@ -172,6 +172,68 @@ const server = http.createServer(async (req, res) => {
       }
     });
   }
+  // Handle /api/leads/update-status route
+  else if (url.pathname === '/api/leads/update-status' && req.method === 'POST') {
+    let body = '';
+    
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    
+    req.on('end', async () => {
+      try {
+        const { conversationId, isQualified, leadStatus, contactInfo } = JSON.parse(body);
+        
+        console.log('Updating lead status for conversation:', conversationId);
+        
+        // Update lead in database
+        const updateData = {
+          is_qualified: isQualified,
+          lead_status: leadStatus,
+          ...(contactInfo && {
+            contact_name: contactInfo.name,
+            contact_email: contactInfo.email,
+            contact_phone: contactInfo.phone
+          })
+        };
+        
+        const { data, error } = await supabase
+          .from('leads')
+          .update(updateData)
+          .eq('conversation_id', conversationId)
+          .select()
+          .single();
+        
+        if (error) {
+          console.error('Error updating lead:', error);
+          res.writeHead(400);
+          res.end(JSON.stringify({ success: false, message: 'Failed to update lead', error: error.message }));
+          return;
+        }
+        
+        // If qualified, send email notification
+        if (isQualified && data.customer_id) {
+          const { data: customer } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('customer_id', data.customer_id)
+            .single();
+          
+          if (customer) {
+            await sendQualifiedLeadEmail(data, customer);
+          }
+        }
+        
+        res.writeHead(200);
+        res.end(JSON.stringify({ success: true, lead: data }));
+        
+      } catch (err) {
+        console.error('Error updating lead status:', err);
+        res.writeHead(500);
+        res.end(JSON.stringify({ success: false, message: 'Failed to update status', error: err.message }));
+      }
+    });
+  }
   else {
     // Default response
     res.writeHead(200);
