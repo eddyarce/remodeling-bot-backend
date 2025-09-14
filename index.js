@@ -202,8 +202,29 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       
+      // Parse metadata for each lead
+      const parsedLeads = (leads || []).map(lead => {
+        let metadata = {};
+        try {
+          metadata = lead.metadata ? JSON.parse(lead.metadata) : {};
+        } catch (e) {
+          console.error('Error parsing metadata:', e);
+        }
+        
+        return {
+          ...lead,
+          contact_name: metadata.name || null,
+          contact_email: metadata.email || null,
+          contact_phone: metadata.phone || null,
+          project_type: metadata.project_type || null,
+          budget: metadata.budget || null,
+          timeline: metadata.timeline_months || null,
+          zip_code: metadata.zip_code || null
+        };
+      });
+      
       res.writeHead(200);
-      res.end(JSON.stringify({ success: true, leads: leads || [] }));
+      res.end(JSON.stringify({ success: true, leads: parsedLeads }));
     } catch (err) {
       console.error('Error:', err);
       res.writeHead(500);
