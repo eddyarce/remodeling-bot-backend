@@ -1,5 +1,6 @@
 const http = require('http');
 const { createClient } = require('@supabase/supabase-js');
+const { sendQualifiedLeadEmail } = require('./services/emailService');
 
 // Log environment variables (without exposing the full key)
 console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
@@ -128,6 +129,50 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ success: false, message: 'Method not allowed' }));
     }
     
+    // Handle /api/leads/notify-qualified route
+  else if (url.pathname === '/api/leads/notify-qualified' && req.method === 'POST') {
+    let body = '';
+    
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    
+    req.on('end', async () => {
+      try {
+        const { customerId, leadData } = JSON.parse(body);
+        
+        console.log('Sending notification for customer:', customerId);
+        
+        // Fetch customer data
+        const { data: customer, error } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('customer_id', customerId)
+          .single();
+        
+        if (error || !customer) {
+          res.writeHead(404);
+          res.end(JSON.stringify({ success: false, message: 'Customer not found' }));
+          return;
+        }
+        
+        // Send email
+        const emailSent = await sendQualifiedLeadEmail(leadData, customer);
+        
+        res.writeHead(200);
+        res.end(JSON.stringify({ 
+          success: emailSent, 
+          message: emailSent ? 'Notification sent' : 'Email failed but lead saved' 
+        }));
+        
+      } catch (err) {
+        console.error('Error sending notification:', err);
+        res.writeHead(500);
+        res.end(JSON.stringify({ success: false, message: 'Failed to send notification', error: err.message }));
+      }
+    });
+  }
+  
   } else {
     // Default response
     res.writeHead(200);
