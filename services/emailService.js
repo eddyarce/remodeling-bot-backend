@@ -4,10 +4,19 @@ const sgMail = require('@sendgrid/mail');
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 const sendQualifiedLeadEmail = async (leadData, customerData) => {
+  // Extract metadata properly
+  let leadMetadata = leadData.metadata;
+  if (typeof leadMetadata === 'string') {
+    leadMetadata = JSON.parse(leadMetadata);
+  }
+  
+  console.log('Email service - Customer data:', customerData);
+  console.log('Email service - Lead metadata:', leadMetadata);
+  
   const msg = {
     to: customerData.contact_email,
     from: 'notifications@leadsavr.com', // You'll need to verify this email in SendGrid
-    subject: '🎉 New Qualified Lead - ' + (leadData.contact_name || 'Unknown'),
+    subject: '🎉 New Qualified Lead - ' + (leadMetadata.name || 'Unknown'),
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;">
@@ -18,13 +27,13 @@ const sendQualifiedLeadEmail = async (leadData, customerData) => {
           <h2 style="color: #333; margin-top: 0;">Lead Details</h2>
           
           <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-            <p style="margin: 10px 0;"><strong>Name:</strong> ${leadData.contact_name || 'Not provided'}</p>
-            <p style="margin: 10px 0;"><strong>Email:</strong> ${leadData.contact_email || 'Not provided'}</p>
-            <p style="margin: 10px 0;"><strong>Phone:</strong> ${leadData.contact_phone || 'Not provided'}</p>
-            <p style="margin: 10px 0;"><strong>Project Type:</strong> ${leadData.project_type || 'Not specified'}</p>
-            <p style="margin: 10px 0;"><strong>Budget:</strong> $${leadData.budget || 'Not specified'}</p>
-            <p style="margin: 10px 0;"><strong>Timeline:</strong> ${leadData.timeline || 'Not specified'} months</p>
-            <p style="margin: 10px 0;"><strong>ZIP Code:</strong> ${leadData.zip_code || 'Not specified'}</p>
+            <p style="margin: 10px 0;"><strong>Name:</strong> ${leadMetadata.name || 'Not provided'}</p>
+            <p style="margin: 10px 0;"><strong>Email:</strong> ${leadMetadata.email || 'Not provided'}</p>
+            <p style="margin: 10px 0;"><strong>Phone:</strong> ${leadMetadata.phone || 'Not provided'}</p>
+            <p style="margin: 10px 0;"><strong>Project Type:</strong> ${leadMetadata.project_type || 'Not specified'}</p>
+            <p style="margin: 10px 0;"><strong>Budget:</strong> ${leadMetadata.budget ? leadMetadata.budget.toLocaleString() : 'Not specified'}</p>
+            <p style="margin: 10px 0;"><strong>Timeline:</strong> ${leadMetadata.timeline_months || 'Not specified'} months</p>
+            <p style="margin: 10px 0;"><strong>ZIP Code:</strong> ${leadMetadata.zip_code || 'Not specified'}</p>
           </div>
           
           <div style="text-align: center;">
@@ -40,6 +49,8 @@ const sendQualifiedLeadEmail = async (leadData, customerData) => {
   };
 
   try {
+    console.log('Sending email to:', customerData.contact_email);
+    console.log('Email subject:', msg.subject);
     await sgMail.send(msg);
     console.log('Email sent successfully to:', customerData.contact_email);
     return true;

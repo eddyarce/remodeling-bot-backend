@@ -129,7 +129,44 @@ const server = http.createServer(async (req, res) => {
       });
     }
     
-    else {
+    // Handle customer lookup test endpoint
+  else if (url.pathname === '/test-customer' && req.method === 'GET') {
+    const customerId = url.searchParams.get('id') || 'CUSTOMER_1757835381571NCBTR';
+    
+    try {
+      console.log('Testing customer lookup for:', customerId);
+      
+      // Direct query test
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('customer_id', customerId)
+        .maybeSingle();
+      
+      console.log('Test query result - Data:', data, 'Error:', error);
+      
+      // Get a few sample customers
+      const { data: samples } = await supabase
+        .from('customers')
+        .select('customer_id, company_name, contact_email')
+        .limit(3);
+        
+      const result = {
+        searchedFor: customerId,
+        found: data,
+        error: error,
+        sampleCustomers: samples
+      };
+      
+      res.writeHead(200);
+      res.end(JSON.stringify(result, null, 2));
+      
+    } catch (err) {
+      console.error('Test endpoint error:', err);
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: err.message }));
+    }
+  }
       res.writeHead(405);
       res.end(JSON.stringify({ success: false, message: 'Method not allowed' }));
     }
