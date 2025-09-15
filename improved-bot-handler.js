@@ -113,7 +113,37 @@ async function handleImprovedBotMessage(req, res) {
     
     console.log('Lead status:', leadStatus, 'Qualified:', isQualified);
 
-    // 6. Save/update conversation record (one record per conversation, not per message)
+    // 6. Check if newly qualified and trigger email notification
+    const wasAlreadyQualified = conversationHistory.some(record => 
+      record.is_qualified === true || record.lead_status === 'qualified'
+    );
+    
+    if (isQualified && !wasAlreadyQualified) {
+      console.log('🎉 NEW QUALIFIED LEAD DETECTED - Triggering email notification!');
+      
+      // Import email service and send notification
+      try {
+        const { sendQualifiedLeadEmail } = require('./services/emailService.js');
+        
+        const leadData = {
+          conversation_id,
+          metadata: currentMetadata,
+          lead_status: leadStatus,
+          customer_id: customerId,
+          created_at: new Date().toISOString()
+        };
+        
+        await sendQualifiedLeadEmail(leadData, customer);
+        console.log('✅ Email notification sent successfully');
+      } catch (emailError) {
+        console.error('❌ Email notification failed:', emailError);
+        // Don't crash the bot if email fails
+      }
+    } else if (isQualified && wasAlreadyQualified) {
+      console.log('Lead already qualified - no duplicate email sent');
+    }
+
+    // 7. Save/update conversation record (one record per conversation, not per message)
     try {
       // Look for existing conversation record
       const { data: existingConversation, error: fetchError } = await supabase
