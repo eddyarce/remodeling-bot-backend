@@ -15,15 +15,27 @@ const supabase = createClient(
 );
 
 const server = http.createServer(async (req, res) => {
-  // Enable CORS
+  // Enable CORS - Production settings
   const origin = req.headers.origin;
-  if (origin && (origin.includes('localhost:3000') || origin.includes('localhost:3001'))) {
+  const allowedOrigins = [
+    'https://widget.leadsavr.com',
+    'https://leadsavr.com',
+    'https://www.leadsavr.com'
+  ];
+  
+  // In production, only allow specific origins
+  // For testing, you can temporarily use '*'
+  if (process.env.NODE_ENV === 'development' || process.env.ALLOW_ALL_ORIGINS === 'true') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  } else if (origin && allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   } else {
+    // Default to widget domain
     res.setHeader('Access-Control-Allow-Origin', 'https://widget.leadsavr.com');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PATCH');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Content-Type', 'application/json');
 
   // Handle preflight requests

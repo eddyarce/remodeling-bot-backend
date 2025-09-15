@@ -195,6 +195,12 @@ function generateBotResponse(message, metadata) {
 
 // Generate AI-powered bot response
 async function generateAIResponse(message, metadata, existingConversation) {
+  // If no OpenAI key, use simple responses
+  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'missing-key') {
+    console.log('Using fallback responses - no OpenAI key');
+    return generateBotResponse(message, metadata);
+  }
+  
   try {
     // Build conversation history
     const conversationHistory = existingConversation ? 
