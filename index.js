@@ -22,6 +22,9 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   
+  // Parse URL first (before using it)
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  
   // Handle preflight requests immediately
   if (req.method === 'OPTIONS') {
     res.writeHead(200);
@@ -66,9 +69,6 @@ const server = http.createServer(async (req, res) => {
   }
   
   res.setHeader('Content-Type', 'application/json');
-
-  // Parse URL
-  const url = new URL(req.url, `http://${req.headers.host}`);
   
   // Handle /api/customers route
   if (url.pathname === '/api/customers') {
