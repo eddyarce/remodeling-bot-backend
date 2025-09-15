@@ -1,9 +1,14 @@
 const { createClient } = require('@supabase/supabase-js');
+const OpenAI = require('openai');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
 // Main bot handler
 async function handleBotMessage(req, res) {
@@ -54,8 +59,8 @@ async function handleBotMessage(req, res) {
         .eq('conversation_id', conversation_id);
     }
 
-    // 5. Generate bot response
-    const response = generateBotResponse(message, metadata);
+    // 5. Generate AI bot response
+    const response = await generateAIResponse(message, metadata, existing);
 
     res.json({ response });
 
@@ -149,6 +154,38 @@ function generateBotResponse(message, metadata) {
     return "Excellent! You qualify for our premium remodeling service. One of our specialists will contact you within 24 hours to discuss your project in detail.";
   } else {
     return "Thank you for your interest! While your project is outside our current service range, we'd be happy to recommend some excellent contractors who specialize in projects of your scope.";
+  }
+}
+
+// Generate AI-powered bot response
+async function generateAIResponse(message, metadata, existingConversation) {
+  try {
+    // Build conversation history
+    const conversationHistory = existingConversation ? 
+      JSON.parse(existingConversation.metadata || '{}') : {};
+    
+    // Create the prompt for OpenAI
+    const systemPrompt = `You are Mason, a friendly remodeling specialist assistant for a luxury remodeling company.
+    Your goal is to qualify leads by collecting: name, email, phone, project type, budget, and timeline.
+    Be conversational and professional. If they don't qualify (budget under $50k), be polite but clear.
+    Current collected info: ${JSON.stringify(metadata)}`;
+    
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: message }
+      ],
+      temperature: 0.7,
+      max_tokens: 150
+    });
+    
+    return completion.choices[0].message.content;
+    
+  } catch (error) {
+    console.error('OpenAI error:', error);
+    // Fallback to simple responses if AI fails
+    return generateBotResponse(message, metadata);
   }
 }
 
