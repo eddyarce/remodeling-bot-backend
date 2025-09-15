@@ -24,6 +24,7 @@ async function handleImprovedBotMessage(req, res) {
     // 1. Fetch customer data with error handling
     let customer = null;
     try {
+      console.log('Looking up customer with ID:', customerId);
       const { data, error } = await supabase
         .from('customers')
         .select('*')
@@ -34,7 +35,8 @@ async function handleImprovedBotMessage(req, res) {
         console.error('Customer fetch error:', error);
       } else {
         customer = data;
-        console.log('Customer found:', customer?.company_name);
+        console.log('Customer found:', customer?.company_name || 'NO CUSTOMER FOUND');
+        console.log('Customer contact_email:', customer?.contact_email || 'NO EMAIL');
       }
     } catch (customerError) {
       console.error('Customer query failed:', customerError);
@@ -120,23 +122,34 @@ async function handleImprovedBotMessage(req, res) {
     
     if (isQualified && !wasAlreadyQualified) {
       console.log('🎉 NEW QUALIFIED LEAD DETECTED - Triggering email notification!');
+      console.log('Customer data for email:', customer);
+      console.log('Lead data for email:', currentMetadata);
       
       // Import email service and send notification
       try {
-        const { sendQualifiedLeadEmail } = require('./services/emailService.js');
-        
-        const leadData = {
-          conversation_id,
-          metadata: currentMetadata,
-          lead_status: leadStatus,
-          customer_id: customerId,
-          created_at: new Date().toISOString()
-        };
-        
-        await sendQualifiedLeadEmail(leadData, customer);
-        console.log('✅ Email notification sent successfully');
+        if (!customer) {
+          console.error('❌ Cannot send email - customer data is null');
+          console.log('Customer ID that failed:', customerId);
+        } else if (!customer.contact_email) {
+          console.error('❌ Cannot send email - customer has no contact_email');
+          console.log('Customer data:', customer);
+        } else {
+          const { sendQualifiedLeadEmail } = require('./services/emailService.js');
+          
+          const leadData = {
+            conversation_id,
+            metadata: currentMetadata,
+            lead_status: leadStatus,
+            customer_id: customerId,
+            created_at: new Date().toISOString()
+          };
+          
+          await sendQualifiedLeadEmail(leadData, customer);
+          console.log('✅ Email notification sent successfully');
+        }
       } catch (emailError) {
         console.error('❌ Email notification failed:', emailError);
+        console.error('Full error stack:', emailError.stack);
         // Don't crash the bot if email fails
       }
     } else if (isQualified && wasAlreadyQualified) {
