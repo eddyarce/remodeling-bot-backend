@@ -19,13 +19,17 @@ async function handleBotMessage(req, res) {
   const { message, conversation_id } = req.body;
   const customerId = req.params.customerId;
 
+  console.log('Processing message for conversation:', conversation_id);
+
   try {
-    // 1. Check if conversation exists
-    const { data: existing } = await supabase
+    // 1. Check if conversation exists (using maybeSingle to avoid errors)
+    const { data: existing, error: fetchError } = await supabase
       .from('conversations')
       .select('*')
       .eq('conversation_id', conversation_id)
-      .single();
+      .maybeSingle(); // Returns null if not found, doesn't throw error
+
+    console.log('Existing conversation found:', !!existing);
 
     // 2. Extract metadata from message (simple version)
     const metadata = extractMetadata(message);
@@ -36,8 +40,9 @@ async function handleBotMessage(req, res) {
 
     // 4. Create or update conversation
     if (!existing) {
+      console.log('Creating new conversation');
       // Create new conversation
-      await supabase
+      const { data: newConv, error: insertError } = await supabase
         .from('conversations')
         .insert({
           conversation_id,
@@ -46,21 +51,26 @@ async function handleBotMessage(req, res) {
           message,
           metadata: JSON.stringify(metadata),
           lead_status: leadStatus,
-          is_qualified: isQualified
-        });
-    } else {
-      // Update existing conversation
-      const updatedMetadata = { ...JSON.parse(existing.metadata || '{}'), ...metadata };
-      
-      await supabase
-        .from('conversations')
-        .update({
-          message,
-          metadata: JSON.stringify(updatedMetadata),
-          lead_status: leadStatus,
-          is_qualified: isQualified
+          is_qualified: isQualified,
+          session_data: conversation_id // Add session_data field
         })
-        .eq('conversation_id', conversation_id);
+        .select()
+        .single();
+      
+      if (insertError) {
+        console.error('Insert error:', insertError);
+        // Check if it's a duplicate key error
+        if (insertError.code === '23505') {
+          console.log('Conversation already exists, updating instead');
+          // Try to update instead
+          await updateExistingConversation(conversation_id, message, metadata, leadStatus, isQualified);
+        } else {
+          throw insertError;
+        }
+      }
+    } else {
+      console.log('Updating existing conversation');
+      await updateExistingConversation(conversation_id, message, metadata, leadStatus, isQualified, existing);
     }
 
     // 5. Generate AI bot response
@@ -71,6 +81,28 @@ async function handleBotMessage(req, res) {
   } catch (error) {
     console.error('Bot error:', error);
     res.status(500).json({ error: 'Failed to process message' });
+  }
+}
+
+// Helper function to update existing conversation
+async function updateExistingConversation(conversation_id, message, metadata, leadStatus, isQualified, existing = null) {
+  const updatedMetadata = existing ? 
+    { ...JSON.parse(existing.metadata || '{}'), ...metadata } : 
+    metadata;
+  
+  const { error } = await supabase
+    .from('conversations')
+    .update({
+      message,
+      metadata: JSON.stringify(updatedMetadata),
+      lead_status: leadStatus,
+      is_qualified: isQualified
+    })
+    .eq('conversation_id', conversation_id);
+  
+  if (error) {
+    console.error('Update error:', error);
+    throw error;
   }
 }
 
