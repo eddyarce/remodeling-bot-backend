@@ -21,25 +21,34 @@ async function handleImprovedBotMessage(req, res) {
   console.log('Customer ID:', customerId);
 
   try {
-    // 1. Fetch customer data with error handling
+    // 1. Fetch customer data with detailed debugging
     let customer = null;
     try {
-      console.log('Looking up customer with ID:', customerId);
+      console.log('DEBUG: Looking up customer with ID:', customerId);
+      console.log('DEBUG: Supabase URL configured:', !!process.env.SUPABASE_URL);
+      console.log('DEBUG: Supabase key configured:', !!process.env.SUPABASE_ANON_KEY);
+      
       const { data, error } = await supabase
         .from('customers')
         .select('*')
         .eq('customer_id', customerId)
         .maybeSingle();
       
+      console.log('DEBUG: Query executed - Data:', data);
+      console.log('DEBUG: Query executed - Error:', error);
+      
       if (error) {
-        console.error('Customer fetch error:', error);
+        console.error('ERROR: Customer fetch error:', error);
+        console.error('ERROR: Error details:', JSON.stringify(error, null, 2));
       } else {
         customer = data;
-        console.log('Customer found:', customer?.company_name || 'NO CUSTOMER FOUND');
-        console.log('Customer contact_email:', customer?.contact_email || 'NO EMAIL');
+        console.log('SUCCESS: Customer found:', customer?.company_name || 'NO CUSTOMER FOUND');
+        console.log('SUCCESS: Customer contact_email:', customer?.contact_email || 'NO EMAIL');
+        console.log('SUCCESS: Full customer object:', JSON.stringify(customer, null, 2));
       }
     } catch (customerError) {
-      console.error('Customer query failed:', customerError);
+      console.error('EXCEPTION: Customer query failed with exception:', customerError);
+      console.error('EXCEPTION: Exception stack:', customerError.stack);
     }
     
     const companyName = customer?.company_name || 'Elite Remodeling';
@@ -110,10 +119,12 @@ async function handleImprovedBotMessage(req, res) {
     }
 
     // 5. Simple validation
-    const leadStatus = determineSimpleStatus(currentMetadata, minBudget, maxTimeline, serviceAreas);
+    const statusResult = determineSimpleStatus(currentMetadata, minBudget, maxTimeline, serviceAreas);
+    const leadStatus = statusResult.status;
+    const disqualificationReason = statusResult.reason;
     const isQualified = leadStatus === 'qualified';
     
-    console.log('Lead status:', leadStatus, 'Qualified:', isQualified);
+    console.log('Lead status:', leadStatus, 'Qualified:', isQualified, 'Reason:', disqualificationReason);
 
     // 6. Check if newly qualified and trigger email notification
     const wasAlreadyQualified = conversationHistory.some(record => 
@@ -121,17 +132,17 @@ async function handleImprovedBotMessage(req, res) {
     );
     
     if (isQualified && !wasAlreadyQualified) {
-      console.log('🎉 NEW QUALIFIED LEAD DETECTED - Triggering email notification!');
+      console.log('NEW QUALIFIED LEAD DETECTED - Triggering email notification!');
       console.log('Customer data for email:', customer);
       console.log('Lead data for email:', currentMetadata);
       
       // Import email service and send notification
       try {
         if (!customer) {
-          console.error('❌ Cannot send email - customer data is null');
+          console.error('ERROR: Cannot send email - customer data is null');
           console.log('Customer ID that failed:', customerId);
         } else if (!customer.contact_email) {
-          console.error('❌ Cannot send email - customer has no contact_email');
+          console.error('ERROR: Cannot send email - customer has no contact_email');
           console.log('Customer data:', customer);
         } else {
           const { sendQualifiedLeadEmail } = require('./services/emailService.js');
@@ -145,10 +156,10 @@ async function handleImprovedBotMessage(req, res) {
           };
           
           await sendQualifiedLeadEmail(leadData, customer);
-          console.log('✅ Email notification sent successfully');
+          console.log('SUCCESS: Email notification sent successfully');
         }
       } catch (emailError) {
-        console.error('❌ Email notification failed:', emailError);
+        console.error('ERROR: Email notification failed:', emailError);
         console.error('Full error stack:', emailError.stack);
         // Don't crash the bot if email fails
       }
@@ -176,7 +187,8 @@ async function handleImprovedBotMessage(req, res) {
             message: `${existingConversation.message}\n\nUser: ${message}\nAssistant: ${masonResponse}`,
             metadata: JSON.stringify(currentMetadata),
             lead_status: leadStatus,
-            is_qualified: isQualified
+            is_qualified: isQualified,
+            disqualification_reason: leadStatus === 'disqualified' ? disqualificationReason : null
           })
           .eq('id', existingConversation.id);
           
@@ -196,7 +208,8 @@ async function handleImprovedBotMessage(req, res) {
             message: `User: ${message}\nAssistant: ${masonResponse}`,
             metadata: JSON.stringify(currentMetadata),
             lead_status: leadStatus,
-            is_qualified: isQualified
+            is_qualified: isQualified,
+            disqualification_reason: leadStatus === 'disqualified' ? disqualificationReason : null
           });
           
         if (insertError) {
@@ -326,23 +339,23 @@ function determineSimpleStatus(metadata, minBudget, maxTimeline, serviceAreas) {
   const hasEmail = !!metadata.email;
   const hasPhone = !!metadata.phone;
 
-  // Check disqualification
-  if (hasLocation && !metadata.zip_code.startsWith(serviceAreas.split(',')[0].trim())) {
-    return 'disqualified';
+  // Check disqualification with reason tracking
+  if (hasLocation && !serviceAreas.split(',').map(zip => zip.trim()).includes(metadata.zip_code)) {
+    return { status: 'disqualified', reason: `outside_service_area:${metadata.zip_code}` };
   }
   if (hasBudget && metadata.budget < minBudget) {
-    return 'disqualified';
+    return { status: 'disqualified', reason: `budget_too_low:${metadata.budget}_min_${minBudget}` };
   }
   if (hasTimeline && metadata.timeline_months > maxTimeline) {
-    return 'disqualified';
+    return { status: 'disqualified', reason: `timeline_too_long:${metadata.timeline_months}_max_${maxTimeline}` };
   }
 
   // Check qualification
   if (hasProject && hasLocation && hasBudget && hasTimeline && hasName && hasEmail && hasPhone) {
-    return 'qualified';
+    return { status: 'qualified', reason: 'all_requirements_met' };
   }
 
-  return 'in_progress';
+  return { status: 'in_progress', reason: 'collecting_information' };
 }
 
 // Simple Mason response generation
@@ -352,11 +365,6 @@ async function generateSimpleMasonResponse(message, metadata, companyName, minBu
   // Handle company questions
   if (lowerMessage.includes('what company') || lowerMessage.includes('which company')) {
     return `This is ${companyName}, where we specialize in high-quality, personalized remodeling projects. How can we assist you with your remodeling needs?`;
-  }
-
-  // Handle greetings
-  if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
-    return `Hello! How can I assist you with your remodeling needs today?`;
   }
 
   // Check what info we have and what we need
@@ -370,11 +378,27 @@ async function generateSimpleMasonResponse(message, metadata, companyName, minBu
 
   console.log('Metadata status:', { hasProject, hasLocation, hasBudget, hasTimeline, hasName, hasEmail, hasPhone });
 
+  // CHECK FOR IMMEDIATE DISQUALIFICATION FIRST (before any other responses)
+  if (hasLocation && !serviceAreas.split(',').map(zip => zip.trim()).includes(metadata.zip_code)) {
+    return `Thank you for your interest in ${companyName}! Unfortunately, we don't currently service the ${metadata.zip_code} area. We primarily work in ${serviceAreas}. I'd be happy to recommend some excellent contractors in your area.`;
+  }
+  if (hasBudget && metadata.budget < minBudget) {
+    return `Thank you for your interest in ${companyName}! While your ${metadata.project_type || 'remodeling'} project sounds wonderful, our minimum budget requirement is ${(minBudget/1000).toFixed(0)}k. I'd be happy to recommend some excellent contractors who work with projects in your budget range.`;
+  }
+  if (hasTimeline && metadata.timeline_months > maxTimeline) {
+    return `Thank you for reaching out! Your ${metadata.project_type || 'remodeling'} project sounds great, but your ${metadata.timeline_months}-month timeline is outside our current scheduling capacity. We typically work with projects starting within ${maxTimeline} months. Would you like to join our newsletter for future availability?`;
+  }
+
+  // Handle greetings (AFTER disqualification checks)
+  if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
+    return `Hello! How can I assist you with your remodeling needs today?`;
+  }
+
   // If they provided comprehensive info at once
   if (hasProject && hasLocation && hasBudget && hasTimeline) {
     const qualifies = metadata.budget >= minBudget && 
                      metadata.timeline_months <= maxTimeline &&
-                     metadata.zip_code.startsWith(serviceAreas.split(',')[0].trim());
+                     serviceAreas.split(',').map(zip => zip.trim()).includes(metadata.zip_code);
     
     if (qualifies) {
       if (!hasName) {

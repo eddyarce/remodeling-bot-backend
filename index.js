@@ -28,6 +28,42 @@ const server = http.createServer(async (req, res) => {
     res.end();
     return;
   }
+  // Handle create test customer endpoint
+  else if (url.pathname === '/create-test-customer' && req.method === 'POST') {
+    try {
+      console.log('Creating missing test customer...');
+      
+      const customerData = {
+        customer_id: 'CUSTOMER_1757835381571NCBTR',
+        company_name: 'test company',
+        contact_email: 'edarce01@gmail.com',
+        service_areas: '90210',
+        minimum_budget: 75000,
+        timeline_threshold: 12
+      };
+      
+      const { data, error } = await supabase
+        .from('customers')
+        .insert([customerData])
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('Error creating customer:', error);
+        res.writeHead(400);
+        res.end(JSON.stringify({ success: false, error: error.message }));
+      } else {
+        console.log('Customer created successfully:', data);
+        res.writeHead(200);
+        res.end(JSON.stringify({ success: true, customer: data }));
+      }
+      
+    } catch (err) {
+      console.error('Exception creating customer:', err);
+      res.writeHead(500);
+      res.end(JSON.stringify({ success: false, error: err.message }));
+    }
+  }
   
   res.setHeader('Content-Type', 'application/json');
 
