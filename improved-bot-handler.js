@@ -93,52 +93,57 @@ async function handleImprovedBotMessage(req, res) {
     
     console.log('Lead status:', leadStatus, 'Qualified:', isQualified);
 
-    // 6. Save messages with error handling (prevent duplicates)
+    // 6. Save/update conversation record (one record per conversation, not per message)
     try {
-      // Check if this exact message already exists to prevent duplicates
-      const { data: existingMessage, error: checkError } = await supabase
+      // Look for existing conversation record
+      const { data: existingConversation, error: fetchError } = await supabase
         .from('conversations')
-        .select('id')
+        .select('*')
         .eq('conversation_id', conversation_id)
-        .eq('role', 'user')
-        .eq('message', message)
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
-      if (!existingMessage) {
-        // Save user message only if it doesn't exist
-        await supabase
+      if (existingConversation) {
+        // Update existing conversation with latest info
+        const { error: updateError } = await supabase
+          .from('conversations')
+          .update({
+            message: `${existingConversation.message}\n\nUser: ${message}\nAssistant: ${masonResponse}`,
+            metadata: JSON.stringify(currentMetadata),
+            lead_status: leadStatus,
+            is_qualified: isQualified
+          })
+          .eq('id', existingConversation.id);
+          
+        if (updateError) {
+          console.error('Update error:', updateError);
+        } else {
+          console.log('Conversation updated successfully');
+        }
+      } else {
+        // Create new conversation record
+        const { error: insertError } = await supabase
           .from('conversations')
           .insert({
             conversation_id,
             customer_id: customerId,
-            role: 'user',
-            message,
+            role: 'assistant', // Use assistant since we're storing the full conversation
+            message: `User: ${message}\nAssistant: ${masonResponse}`,
             metadata: JSON.stringify(currentMetadata),
             lead_status: leadStatus,
             is_qualified: isQualified
           });
           
-        console.log('User message saved');
-      } else {
-        console.log('User message already exists, skipping save');
+        if (insertError) {
+          console.error('Insert error:', insertError);
+        } else {
+          console.log('New conversation created successfully');
+        }
       }
-
-      // Always save assistant response (each should be unique)
-      await supabase
-        .from('conversations')
-        .insert({
-          conversation_id,
-          customer_id: customerId,
-          role: 'assistant',
-          message: masonResponse,
-          metadata: JSON.stringify(currentMetadata),
-          lead_status: leadStatus,
-          is_qualified: isQualified
-        });
-        
-      console.log('Assistant message saved');
     } catch (saveError) {
-      console.error('Save error:', saveError);
+      console.error('Save/update error:', saveError);
       // Continue anyway - don't crash
     }
 
