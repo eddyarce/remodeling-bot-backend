@@ -76,11 +76,13 @@ async function handleBotMessage(req, res) {
     // 5. Generate AI bot response
     const response = await generateAIResponse(message, metadata, existing);
 
-    res.json({ response });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ response }));
 
   } catch (error) {
     console.error('Bot error:', error);
-    res.status(500).json({ error: 'Failed to process message' });
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Failed to process message' }));
   }
 }
 
