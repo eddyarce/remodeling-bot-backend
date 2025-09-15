@@ -129,7 +129,12 @@ const server = http.createServer(async (req, res) => {
       });
     }
     
-    // Handle customer lookup test endpoint
+    else {
+      res.writeHead(405);
+      res.end(JSON.stringify({ success: false, message: 'Method not allowed' }));
+    }
+  }
+  // Handle customer lookup test endpoint
   else if (url.pathname === '/test-customer' && req.method === 'GET') {
     const customerId = url.searchParams.get('id') || 'CUSTOMER_1757835381571NCBTR';
     
@@ -165,10 +170,6 @@ const server = http.createServer(async (req, res) => {
       console.error('Test endpoint error:', err);
       res.writeHead(500);
       res.end(JSON.stringify({ error: err.message }));
-    }
-  }
-      res.writeHead(405);
-      res.end(JSON.stringify({ success: false, message: 'Method not allowed' }));
     }
   }
   // Handle /api/leads/notify-qualified route
