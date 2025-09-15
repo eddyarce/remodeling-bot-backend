@@ -3,6 +3,7 @@ require('dotenv').config(); // Load environment variables
 const { createClient } = require('@supabase/supabase-js');
 const { sendQualifiedLeadEmail } = require('./services/emailService.js');
 const { handleBotMessage } = require('./bot-handler.js');
+const { handleImprovedBotMessage } = require('./improved-bot-handler.js');
 
 // Log environment variables (without exposing the full key)
 console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
@@ -173,6 +174,26 @@ const server = http.createServer(async (req, res) => {
         console.error('Error sending notification:', err);
         res.writeHead(500);
         res.end(JSON.stringify({ success: false, message: 'Failed to send notification', error: err.message }));
+      }
+    });
+  }
+  // Handle improved bot webhook (new endpoint)
+  else if (url.pathname.startsWith('/webhook/improved-bot/') && req.method === 'POST') {
+    const pathParts = url.pathname.split('/');
+    const customerId = pathParts[pathParts.length - 1];
+    
+    let body = '';
+    req.on('data', chunk => body += chunk.toString());
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        req.body = data;
+        req.params = { customerId };
+        await handleImprovedBotMessage(req, res);
+      } catch (error) {
+        console.error('Improved bot webhook error:', error);
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: 'Internal server error' }));
       }
     });
   }

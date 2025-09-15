@@ -24,15 +24,22 @@ async function handleBotMessage(req, res) {
 
   try {
     // 1. Fetch customer data
-    const { data: customer } = await supabase
+    const { data: customer, error: customerError } = await supabase
       .from('customers')
       .select('*')
       .eq('customer_id', customerId)
-      .single();
+      .maybeSingle();
     
-    const companyName = customer?.company_name || 'Elite Remodeling';
-    const projectTypes = customer?.project_types || ['kitchen', 'bathroom'];
-    const minBudget = customer?.min_budget || 50000;
+    if (customerError) {
+      console.error('Error fetching customer:', customerError);
+    }
+    
+    console.log('Customer data:', customer);
+    
+    const companyName = customer?.company_name || 'Test Company';
+    const serviceAreas = customer?.service_areas || '90210';
+    const minBudget = customer?.minimum_budget || 50000;
+    const maxTimeline = customer?.timeline_threshold || 12; // This is the MAX months
 
     // 2. Check if conversation exists (using maybeSingle to avoid errors)
     const { data: existing, error: fetchError } = await supabase
@@ -47,7 +54,7 @@ async function handleBotMessage(req, res) {
     const metadata = extractMetadata(message);
 
     // 3. Determine qualification status
-    const isQualified = checkIfQualified(metadata);
+    const isQualified = checkIfQualified(metadata, minBudget, maxTimeline);
     const leadStatus = isQualified ? 'qualified' : 'in_progress';
 
     // 4. Create or update conversation
@@ -86,7 +93,7 @@ async function handleBotMessage(req, res) {
     }
 
     // 5. Generate AI bot response with customer context
-    const response = await generateAIResponse(message, metadata, existing, companyName, minBudget);
+    const response = await generateAIResponse(message, metadata, existing, companyName, minBudget, maxTimeline, serviceAreas);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ response }));
@@ -155,23 +162,31 @@ function extractMetadata(message) {
 }
 
 // Check if lead is qualified
-function checkIfQualified(metadata) {
+function checkIfQualified(metadata, minBudget = 50000, maxTimeline = 12) {
+  // Timeline check: they need to start WITHIN the max timeline (e.g., <= 12 months)
+  const timelineQualified = metadata.timeline_months && parseInt(metadata.timeline_months) <= maxTimeline;
+  
   return !!(
     metadata.email &&
     metadata.phone &&
     metadata.budget &&
-    metadata.budget >= 50000 &&
-    metadata.timeline_months
+    metadata.budget >= minBudget &&
+    timelineQualified
   );
 }
 
-// Generate appropriate bot response
-function generateBotResponse(message, metadata) {
+// Generate appropriate bot response with customer context
+function generateBotResponse(message, metadata, companyName = 'Elite Remodeling', minBudget = 50000) {
   const lowerMessage = message.toLowerCase();
+  
+  // Handle company questions
+  if (lowerMessage.includes('what company') || lowerMessage.includes('which company')) {
+    return `I work for ${companyName}. How can I help you with your remodeling project?`;
+  }
   
   // Greeting
   if (!metadata.name) {
-    return "Thanks for your interest! I'm Mason, your remodeling specialist. What's your name?";
+    return `Thanks for your interest! I'm Mason from ${companyName}. What's your name?`;
   }
   
   // Ask for email
@@ -191,7 +206,7 @@ function generateBotResponse(message, metadata) {
   
   // Ask for budget
   if (!metadata.budget) {
-    return "To ensure we're the right fit, what's your approximate budget for this project?";
+    return `To ensure we're the right fit, what's your approximate budget for this project? We typically work with projects starting at ${minBudget.toLocaleString()}.`;
   }
   
   // Ask for timeline
@@ -200,19 +215,19 @@ function generateBotResponse(message, metadata) {
   }
   
   // Qualified response
-  if (metadata.budget >= 50000) {
-    return "Excellent! You qualify for our premium remodeling service. One of our specialists will contact you within 24 hours to discuss your project in detail.";
+  if (metadata.budget >= minBudget) {
+    return `Excellent! You qualify for our premium remodeling service at ${companyName}. One of our specialists will contact you within 24 hours to discuss your project in detail.`;
   } else {
     return "Thank you for your interest! While your project is outside our current service range, we'd be happy to recommend some excellent contractors who specialize in projects of your scope.";
   }
 }
 
 // Generate AI-powered bot response
-async function generateAIResponse(message, metadata, existingConversation, companyName = 'Elite Remodeling', minBudget = 50000) {
+async function generateAIResponse(message, metadata, existingConversation, companyName = 'Elite Remodeling', minBudget = 50000, maxTimeline = 12, serviceAreas = '90210') {
   // If no OpenAI key, use simple responses
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'missing-key') {
     console.log('Using fallback responses - no OpenAI key');
-    return generateBotResponse(message, metadata);
+    return generateBotResponse(message, metadata, companyName, minBudget);
   }
   
   try {
@@ -220,12 +235,26 @@ async function generateAIResponse(message, metadata, existingConversation, compa
     const conversationHistory = existingConversation ? 
       JSON.parse(existingConversation.metadata || '{}') : {};
     
-    // Create the prompt for OpenAI
+    // Create the enhanced prompt with customer data
     const systemPrompt = `You are Mason, a friendly remodeling specialist assistant for ${companyName}.
-    Your goal is to qualify leads by collecting: name, email, phone, project type, budget, and timeline.
-    Be conversational and professional. If they don't qualify (budget under ${minBudget.toLocaleString()}), be polite but clear.
-    When asked about the company, you work for ${companyName}.
-    Current collected info: ${JSON.stringify(metadata)}`;
+    
+COMPANY INFO:
+    - Company: ${companyName}
+    - Service Areas: ${serviceAreas}
+    - Minimum Budget: ${minBudget.toLocaleString()}
+    - Timeline: Projects starting within ${maxTimeline} months
+    
+Your goal is to qualify leads by collecting: name, email, phone, project type, budget, and timeline.
+    Be conversational and professional. When asked "what company is this?", respond with "${companyName}".
+    
+QUALIFICATION CRITERIA:
+    - Budget must be at least ${minBudget.toLocaleString()}
+    - Timeline must be ${maxTimeline} months or less
+    - Must be in service area: ${serviceAreas}
+    
+If they don't qualify (budget under ${minBudget.toLocaleString()} or timeline over ${maxTimeline} months), be polite but clear.
+    
+Current collected info: ${JSON.stringify(metadata)}`;
     
     const completion = await openai.chat.completions.create({
       model: "gpt-4",
@@ -242,7 +271,7 @@ async function generateAIResponse(message, metadata, existingConversation, compa
   } catch (error) {
     console.error('OpenAI error:', error);
     // Fallback to simple responses if AI fails
-    return generateBotResponse(message, metadata);
+    return generateBotResponse(message, metadata, companyName, minBudget);
   }
 }
 
