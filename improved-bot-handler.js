@@ -93,22 +93,37 @@ async function handleImprovedBotMessage(req, res) {
     
     console.log('Lead status:', leadStatus, 'Qualified:', isQualified);
 
-    // 6. Save messages with error handling
+    // 6. Save messages with error handling (prevent duplicates)
     try {
-      // Save user message
-      await supabase
+      // Check if this exact message already exists to prevent duplicates
+      const { data: existingMessage, error: checkError } = await supabase
         .from('conversations')
-        .insert({
-          conversation_id,
-          customer_id: customerId,
-          role: 'user',
-          message,
-          metadata: JSON.stringify(currentMetadata),
-          lead_status: leadStatus,
-          is_qualified: isQualified
-        });
+        .select('id')
+        .eq('conversation_id', conversation_id)
+        .eq('role', 'user')
+        .eq('message', message)
+        .maybeSingle();
 
-      // Save assistant response  
+      if (!existingMessage) {
+        // Save user message only if it doesn't exist
+        await supabase
+          .from('conversations')
+          .insert({
+            conversation_id,
+            customer_id: customerId,
+            role: 'user',
+            message,
+            metadata: JSON.stringify(currentMetadata),
+            lead_status: leadStatus,
+            is_qualified: isQualified
+          });
+          
+        console.log('User message saved');
+      } else {
+        console.log('User message already exists, skipping save');
+      }
+
+      // Always save assistant response (each should be unique)
       await supabase
         .from('conversations')
         .insert({
@@ -121,7 +136,7 @@ async function handleImprovedBotMessage(req, res) {
           is_qualified: isQualified
         });
         
-      console.log('Messages saved successfully');
+      console.log('Assistant message saved');
     } catch (saveError) {
       console.error('Save error:', saveError);
       // Continue anyway - don't crash
@@ -208,11 +223,26 @@ function extractSimpleMetadata(currentMessage, conversationHistory) {
     }
   }
 
-  // Extract name (simple)
-  const nameMatch = allMessages.match(/my name is ([A-Za-z]+ [A-Za-z]+)/i);
-  if (nameMatch) {
-    metadata.name = nameMatch[1];
-    console.log('Found name:', metadata.name);
+  // Extract name (improved patterns)
+  const namePatterns = [
+    /my name is ([A-Za-z]+ [A-Za-z]+)/i,
+    /i'm ([A-Za-z]+ [A-Za-z]+)/i,
+    /I am ([A-Za-z]+ [A-Za-z]+)/i,
+    /^([A-Za-z]+ [A-Za-z]+)$/i  // Just a name by itself
+  ];
+  
+  for (const pattern of namePatterns) {
+    const nameMatch = currentMessage.match(pattern) || allMessages.match(pattern);
+    if (nameMatch) {
+      const name = nameMatch[1].trim();
+      // Validate it's not a common word
+      const commonWords = ['yes', 'yeah', 'sure', 'okay', 'ok', 'good', 'great', 'fine', 'hello', 'hi'];
+      if (!commonWords.includes(name.toLowerCase()) && name.length > 3 && name.includes(' ')) {
+        metadata.name = name;
+        console.log('Found name:', metadata.name);
+        break;
+      }
+    }
   }
 
   return metadata;
