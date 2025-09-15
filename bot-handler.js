@@ -20,9 +20,21 @@ async function handleBotMessage(req, res) {
   const customerId = req.params.customerId;
 
   console.log('Processing message for conversation:', conversation_id);
+  console.log('Customer ID:', customerId);
 
   try {
-    // 1. Check if conversation exists (using maybeSingle to avoid errors)
+    // 1. Fetch customer data
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('customer_id', customerId)
+      .single();
+    
+    const companyName = customer?.company_name || 'Elite Remodeling';
+    const projectTypes = customer?.project_types || ['kitchen', 'bathroom'];
+    const minBudget = customer?.min_budget || 50000;
+
+    // 2. Check if conversation exists (using maybeSingle to avoid errors)
     const { data: existing, error: fetchError } = await supabase
       .from('conversations')
       .select('*')
@@ -73,8 +85,8 @@ async function handleBotMessage(req, res) {
       await updateExistingConversation(conversation_id, message, metadata, leadStatus, isQualified, existing);
     }
 
-    // 5. Generate AI bot response
-    const response = await generateAIResponse(message, metadata, existing);
+    // 5. Generate AI bot response with customer context
+    const response = await generateAIResponse(message, metadata, existing, companyName, minBudget);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ response }));
@@ -196,7 +208,7 @@ function generateBotResponse(message, metadata) {
 }
 
 // Generate AI-powered bot response
-async function generateAIResponse(message, metadata, existingConversation) {
+async function generateAIResponse(message, metadata, existingConversation, companyName = 'Elite Remodeling', minBudget = 50000) {
   // If no OpenAI key, use simple responses
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'missing-key') {
     console.log('Using fallback responses - no OpenAI key');
@@ -209,9 +221,10 @@ async function generateAIResponse(message, metadata, existingConversation) {
       JSON.parse(existingConversation.metadata || '{}') : {};
     
     // Create the prompt for OpenAI
-    const systemPrompt = `You are Mason, a friendly remodeling specialist assistant for a luxury remodeling company.
+    const systemPrompt = `You are Mason, a friendly remodeling specialist assistant for ${companyName}.
     Your goal is to qualify leads by collecting: name, email, phone, project type, budget, and timeline.
-    Be conversational and professional. If they don't qualify (budget under $50k), be polite but clear.
+    Be conversational and professional. If they don't qualify (budget under ${minBudget.toLocaleString()}), be polite but clear.
+    When asked about the company, you work for ${companyName}.
     Current collected info: ${JSON.stringify(metadata)}`;
     
     const completion = await openai.chat.completions.create({
