@@ -1,13 +1,17 @@
 const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');
 
+// Log to check if env vars are loaded
+console.log('OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
+console.log('Key starts with:', process.env.OPENAI_API_KEY?.substring(0, 7));
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY || 'missing-key'
 });
 
 // Main bot handler
