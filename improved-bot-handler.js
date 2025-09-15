@@ -51,6 +51,12 @@ async function handleImprovedBotMessage(req, res) {
       console.error('EXCEPTION: Exception stack:', customerError.stack);
     }
     
+    // Use actual customer data or fail loudly
+    if (!customer) {
+      console.error('CRITICAL: No customer found for ID:', customerId);
+      console.error('Using defaults - THIS SHOULD NOT HAPPEN IN PRODUCTION');
+    }
+    
     const companyName = customer?.company_name || 'Elite Remodeling';
     const serviceAreas = customer?.service_areas || '90210';
     const minBudget = customer?.minimum_budget || 75000;
@@ -168,6 +174,10 @@ async function handleImprovedBotMessage(req, res) {
     }
 
     // 7. Save/update conversation record (one record per conversation, not per message)
+    console.log('=== ATTEMPTING TO SAVE CONVERSATION ===');
+    console.log('Conversation ID:', conversation_id);
+    console.log('Customer ID:', customerId);
+    
     try {
       // Look for existing conversation record
       const { data: existingConversation, error: fetchError } = await supabase
@@ -179,8 +189,12 @@ async function handleImprovedBotMessage(req, res) {
         .limit(1)
         .maybeSingle();
 
+      console.log('Existing conversation lookup:', { found: !!existingConversation, error: fetchError });
+
       if (existingConversation) {
         // Update existing conversation with latest info
+        console.log('Updating existing conversation ID:', existingConversation.id);
+        
         const { error: updateError } = await supabase
           .from('conversations')
           .update({
@@ -193,29 +207,41 @@ async function handleImprovedBotMessage(req, res) {
           .eq('id', existingConversation.id);
           
         if (updateError) {
-          console.error('Update error:', updateError);
+          console.error('UPDATE ERROR:', updateError);
+          console.error('Full update error details:', JSON.stringify(updateError, null, 2));
         } else {
-          console.log('Conversation updated successfully');
+          console.log('✅ Conversation UPDATED successfully');
         }
       } else {
         // Create new conversation record
-        const { error: insertError } = await supabase
+        console.log('Creating NEW conversation record');
+        
+        const insertData = {
+          conversation_id,
+          customer_id: customerId,
+          role: 'assistant', // Use assistant since we're storing the full conversation
+          message: `User: ${message}\nAssistant: ${masonResponse}`,
+          metadata: JSON.stringify(currentMetadata),
+          lead_status: leadStatus,
+          is_qualified: isQualified,
+          disqualification_reason: leadStatus === 'disqualified' ? disqualificationReason : null
+        };
+        
+        console.log('Insert data:', JSON.stringify(insertData, null, 2));
+        
+        const { data: insertedData, error: insertError } = await supabase
           .from('conversations')
-          .insert({
-            conversation_id,
-            customer_id: customerId,
-            role: 'assistant', // Use assistant since we're storing the full conversation
-            message: `User: ${message}\nAssistant: ${masonResponse}`,
-            metadata: JSON.stringify(currentMetadata),
-            lead_status: leadStatus,
-            is_qualified: isQualified,
-            disqualification_reason: leadStatus === 'disqualified' ? disqualificationReason : null
-          });
+          .insert(insertData)
+          .select();
           
         if (insertError) {
-          console.error('Insert error:', insertError);
+          console.error('INSERT ERROR:', insertError);
+          console.error('Full insert error details:', JSON.stringify(insertError, null, 2));
+          console.error('Error code:', insertError.code);
+          console.error('Error message:', insertError.message);
         } else {
-          console.log('New conversation created successfully');
+          console.log('✅ New conversation CREATED successfully');
+          console.log('Inserted data:', insertedData);
         }
       }
     } catch (saveError) {
@@ -531,7 +557,10 @@ function extractNewMetadataOnly(currentMessage, existingMetadata) {
       { keywords: ['bedroom'], type: 'bedroom' },
       { keywords: ['living room', 'family room'], type: 'living room' },
       { keywords: ['basement'], type: 'basement' },
-      { keywords: ['addition', 'extension'], type: 'addition' }
+      { keywords: ['garage'], type: 'garage' },
+      { keywords: ['addition', 'extension'], type: 'addition' },
+      { keywords: ['deck', 'patio'], type: 'outdoor' },
+      { keywords: ['whole home', 'full home', 'entire home'], type: 'whole home' }
     ];
     
     for (const project of projectTypes) {
