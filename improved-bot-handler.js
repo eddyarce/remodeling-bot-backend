@@ -66,9 +66,29 @@ async function handleImprovedBotMessage(req, res) {
       console.error('History query failed:', historyError);
     }
 
-    // 3. Extract metadata from all messages (simple extraction)
-    const currentMetadata = extractSimpleMetadata(message, conversationHistory);
-    console.log('Extracted metadata:', currentMetadata);
+    // 3. Extract and preserve metadata properly
+    let currentMetadata = {};
+    
+    // Get existing metadata from the most recent conversation record
+    if (conversationHistory && conversationHistory.length > 0) {
+      const lastRecord = conversationHistory[conversationHistory.length - 1];
+      if (lastRecord.metadata) {
+        try {
+          currentMetadata = JSON.parse(lastRecord.metadata);
+          console.log('Starting with existing metadata:', currentMetadata);
+        } catch (e) {
+          console.error('Error parsing existing metadata:', e);
+          currentMetadata = {};
+        }
+      }
+    }
+    
+    // Extract only NEW information from current message (don't reprocess everything)
+    const newMetadata = extractNewMetadataOnly(message, currentMetadata);
+    
+    // Merge new data with existing
+    currentMetadata = { ...currentMetadata, ...newMetadata };
+    console.log('Final metadata after merge:', currentMetadata);
 
     // 4. Generate Mason response (simplified)
     let masonResponse;
@@ -364,3 +384,124 @@ async function generateSimpleMasonResponse(message, metadata, companyName, minBu
 }
 
 module.exports = { handleImprovedBotMessage };
+
+// Extract only NEW metadata from current message (doesn't reprocess existing data)
+function extractNewMetadataOnly(currentMessage, existingMetadata) {
+  const newMetadata = {};
+  const msg = currentMessage.toLowerCase();
+  
+  console.log('Extracting NEW data from message:', currentMessage);
+  console.log('Existing data to preserve:', existingMetadata);
+
+  // Extract email (only if we don't have one)
+  if (!existingMetadata.email) {
+    const emailMatch = currentMessage.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/);
+    if (emailMatch) {
+      newMetadata.email = emailMatch[0];
+      console.log('Found NEW email:', newMetadata.email);
+    }
+  }
+
+  // Extract phone (only if we don't have one)
+  if (!existingMetadata.phone) {
+    const phonePattern = /\b\d{3}[-.\ ]?\d{3}[-.\ ]?\d{4}\b/;
+    const phoneMatch = currentMessage.match(phonePattern);
+    if (phoneMatch) {
+      newMetadata.phone = phoneMatch[0];
+      console.log('Found NEW phone:', newMetadata.phone);
+    }
+  }
+
+  // Extract budget (only if we don't have one)
+  if (!existingMetadata.budget) {
+    const budgetPatterns = [
+      /\$(\d+)k/i,           // $100k
+      /\$(\d+),?(\d+)/i,     // $100,000 or $100000
+      /(\d+)k/i              // 100k
+    ];
+    
+    for (const pattern of budgetPatterns) {
+      const budgetMatch = currentMessage.match(pattern);
+      if (budgetMatch) {
+        let budget = 0;
+        if (pattern.source.includes('k')) {
+          budget = parseInt(budgetMatch[1]) * 1000;
+        } else {
+          budget = parseInt(budgetMatch[1] + (budgetMatch[2] || ''));
+        }
+        if (budget > 5000) { // Reasonable minimum
+          newMetadata.budget = budget;
+          console.log('Found NEW budget:', newMetadata.budget);
+          break;
+        }
+      }
+    }
+  }
+
+  // Extract timeline (only if we don't have one)
+  if (!existingMetadata.timeline_months) {
+    const timelineMatch = currentMessage.match(/(\d+)\s*months?/i);
+    if (timelineMatch) {
+      newMetadata.timeline_months = parseInt(timelineMatch[1]);
+      console.log('Found NEW timeline:', newMetadata.timeline_months);
+    }
+  }
+
+  // Extract ZIP code (only if we don't have one)
+  if (!existingMetadata.zip_code) {
+    const zipMatch = currentMessage.match(/\b(\d{5})\b/);
+    if (zipMatch) {
+      newMetadata.zip_code = zipMatch[1];
+      console.log('Found NEW zip code:', newMetadata.zip_code);
+    }
+  }
+
+  // Extract project type (only if we don't have one)
+  if (!existingMetadata.project_type) {
+    const projectTypes = [
+      { keywords: ['kitchen'], type: 'kitchen' },
+      { keywords: ['bathroom', 'bath'], type: 'bathroom' },
+      { keywords: ['bedroom'], type: 'bedroom' },
+      { keywords: ['living room', 'family room'], type: 'living room' },
+      { keywords: ['basement'], type: 'basement' },
+      { keywords: ['addition', 'extension'], type: 'addition' }
+    ];
+    
+    for (const project of projectTypes) {
+      if (project.keywords.some(keyword => msg.includes(keyword))) {
+        newMetadata.project_type = project.type;
+        console.log('Found NEW project type:', newMetadata.project_type);
+        break;
+      }
+    }
+  }
+
+  // Extract name (only if we don't have one)
+  if (!existingMetadata.name) {
+    const namePatterns = [
+      /my name is ([A-Za-z]+ [A-Za-z]+)/i,
+      /i'?m ([A-Za-z]+ [A-Za-z]+)/i,
+      /^([A-Za-z]+ [A-Za-z]+)$/i  // Just first and last name
+    ];
+    
+    for (const pattern of namePatterns) {
+      const nameMatch = currentMessage.match(pattern);
+      if (nameMatch) {
+        const name = nameMatch[1].trim();
+        // Validate name
+        const invalidNames = ['yes sir', 'no sir', 'thank you', 'hello there', 'hi there'];
+        if (name.length > 3 && 
+            name.includes(' ') && 
+            !invalidNames.includes(name.toLowerCase()) &&
+            /^[A-Za-z\s]+$/.test(name)) {
+          newMetadata.name = name;
+          console.log('Found NEW name:', newMetadata.name);
+          break;
+        }
+      }
+    }
+  }
+
+  console.log('New metadata extracted:', newMetadata);
+  return newMetadata;
+}
