@@ -86,19 +86,23 @@ async function handleImprovedBotMessage(req, res) {
     // 3. Extract and preserve metadata properly
     let currentMetadata = {};
     
-    // Get existing metadata from the most recent conversation record
-    if (conversationHistory && conversationHistory.length > 0) {
-      const lastRecord = conversationHistory[conversationHistory.length - 1];
-      if (lastRecord.metadata) {
-        try {
-          currentMetadata = JSON.parse(lastRecord.metadata);
-          console.log('Starting with existing metadata:', currentMetadata);
+    // Build conversation context from history
+    let conversationContext = '';
+    if (conversationHistory.length > 0) {
+    // Get the last metadata state to understand what we already have
+    const lastMessage = conversationHistory[conversationHistory.length - 1];
+    if (lastMessage.metadata) {
+    try {
+      const lastMetadata = typeof lastMessage.metadata === 'string' 
+      ? JSON.parse(lastMessage.metadata) 
+      : lastMessage.metadata;
+      // Use this to inform our response
+        currentMetadata = { ...lastMetadata, ...currentMetadata };
         } catch (e) {
-          console.error('Error parsing existing metadata:', e);
-          currentMetadata = {};
-        }
+        console.log('Could not parse last metadata');
       }
     }
+  }
     
     // Extract only NEW information from current message (don't reprocess everything)
     const newMetadata = extractNewMetadataOnly(message, currentMetadata);
@@ -415,8 +419,8 @@ async function generateSimpleMasonResponse(message, metadata, companyName, minBu
     return `Thank you for reaching out! Your ${metadata.project_type || 'remodeling'} project sounds great, but your ${metadata.timeline_months}-month timeline is outside our current scheduling capacity. We typically work with projects starting within ${maxTimeline} months. Would you like to join our newsletter for future availability?`;
   }
 
-  // Handle greetings (AFTER disqualification checks)
-  if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
+  // Handle greetings ONLY at the start of conversation
+  if ((lowerMessage.includes('hello') || lowerMessage.includes('hi')) && !hasProject && !hasLocation && !hasBudget && !hasTimeline) {
     return `Hello! How can I assist you with your remodeling needs today?`;
   }
 
@@ -533,10 +537,21 @@ function extractNewMetadataOnly(currentMessage, existingMetadata) {
 
   // Extract timeline (only if we don't have one)
   if (!existingMetadata.timeline_months) {
-    const timelineMatch = currentMessage.match(/(\d+)\s*months?/i);
-    if (timelineMatch) {
-      newMetadata.timeline_months = parseInt(timelineMatch[1]);
-      console.log('Found NEW timeline:', newMetadata.timeline_months);
+    // Check for "within the next X months" or "in X months" or just "X months"
+    const timelinePatterns = [
+      /within the next (\d+)\s*months?/i,
+      /within (\d+)\s*months?/i,
+      /in (\d+)\s*months?/i,
+      /(\d+)\s*months?/i
+    ];
+    
+    for (const pattern of timelinePatterns) {
+      const timelineMatch = currentMessage.match(pattern);
+      if (timelineMatch) {
+        newMetadata.timeline_months = parseInt(timelineMatch[1]);
+        console.log('Found NEW timeline:', newMetadata.timeline_months);
+        break;
+      }
     }
   }
 
