@@ -292,7 +292,7 @@ const server = http.createServer(async (req, res) => {
       }
     });
   }
-  // Handle bot webhook
+  // Handle bot webhook - Route to n8n first, fallback to local handler
   else if (url.pathname.startsWith('/webhook/bot/') && req.method === 'POST') {
     const pathParts = url.pathname.split('/');
     const customerId = pathParts[pathParts.length - 1];
@@ -302,13 +302,50 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const data = JSON.parse(body);
-        req.body = data;
-        req.params = { customerId };
-        await handleBotMessage(req, res);
+        
+        // First, try to route to n8n webhook (primary handler)
+        try {
+          console.log('[Bot] Routing to n8n webhook for customer:', customerId);
+          
+          const n8nResponse = await fetch(`https://eddya.app.n8n.cloud/webhook/chat/${customerId}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data),
+            signal: AbortSignal.timeout(8000) // 8 second timeout
+          });
+          
+          if (n8nResponse.ok) {
+            const n8nData = await n8nResponse.json();
+            console.log('[Bot] n8n handled successfully');
+            
+            // Pass n8n's response back to the client
+            res.writeHead(200);
+            res.end(JSON.stringify(n8nData));
+            return;
+          } else {
+            console.log('[Bot] n8n returned error status:', n8nResponse.status);
+            throw new Error(`n8n returned status ${n8nResponse.status}`);
+          }
+        } catch (n8nError) {
+          // n8n failed, fallback to local handler
+          console.error('[Bot] n8n webhook failed, using local handler:', n8nError.message);
+          console.log('[Bot] Falling back to local bot handler');
+          
+          // Use the existing local handler as fallback
+          req.body = data;
+          req.params = { customerId };
+          await handleBotMessage(req, res);
+        }
+        
       } catch (error) {
         console.error('Bot webhook error:', error);
         res.writeHead(500);
-        res.end(JSON.stringify({ error: 'Internal server error' }));
+        res.end(JSON.stringify({ 
+          error: 'Internal server error',
+          message: 'Both n8n and local handlers failed'
+        }));
       }
     });
   }
