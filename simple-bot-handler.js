@@ -27,7 +27,9 @@ async function handleSimpleBotMessage(req, res) {
       .single();
 
     if (!customer) {
-      return res.status(404).json({ error: 'Customer not found' });
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Customer not found' }));
+      return;
     }
 
     // 2. Get ALL conversation history
@@ -84,7 +86,7 @@ IMPORTANT: Remember what information you've already collected. Don't ask for the
 
     // 4. Get OpenAI's response
     const completion = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-3.5-turbo",
       messages: messages,
       temperature: 0.7,
       max_tokens: 200
@@ -114,7 +116,7 @@ IMPORTANT: Remember what information you've already collected. Don't ask for the
     const checkMessages = [...messages, { role: "assistant", content: botResponse }];
     
     const qualificationCheck = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-3.5-turbo",
       messages: [
         ...checkMessages,
         {
@@ -133,17 +135,19 @@ IMPORTANT: Remember what information you've already collected. Don't ask for the
     }
 
     // 7. Return response
-    res.json({
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
       response: botResponse,
       qualified: isQualified
-    });
+    }));
 
   } catch (error) {
     console.error('Simple bot error:', error);
-    res.status(500).json({ 
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
       error: 'Bot error', 
       details: error.message 
-    });
+    }));
   }
 }
 
